@@ -1,4 +1,4 @@
-.PHONY: verify install format-check lint typecheck test audit sample
+.PHONY: verify install format-check metadata-check lint typecheck test audit sample
 
 UV := uv
 
@@ -8,6 +8,9 @@ install:
 format-check:
 	$(UV) run python tools/check_whitespace.py
 	$(UV) run ruff format --check src tests examples tools
+
+metadata-check:
+	$(UV) run python tools/check_project_metadata.py
 
 lint:
 	$(UV) run ruff check src tests examples tools
@@ -24,4 +27,4 @@ audit:
 sample:
 	$(UV) run python -m zeotool examples/input.txt --output-dir examples/output --work-dir . --overwrite
 
-verify: install format-check lint typecheck test audit
+verify: install format-check metadata-check lint typecheck test audit

@@ -70,9 +70,9 @@ the prior API. Update callers to import `zeotool` and run `python -m zeotool`.
 Historical commits remain intact; [`RELICENSING.md`](RELICENSING.md) records
 the authorized forward MIT relicensing.
 
-The repository URL remains its historical GitHub address until the repository
-owner performs the separate GitHub rename. The distribution and all source
-surfaces in this revision use ZeoTool.
+The canonical repository is
+[`profrodai/zeotool`](https://github.com/profrodai/zeotool). The distribution
+and all current source surfaces use ZeoTool.
 
 ## API shape
 
