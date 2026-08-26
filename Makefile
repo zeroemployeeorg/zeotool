@@ -10,7 +10,7 @@ format-check:
 	$(UV) run ruff format --check src tests examples tools
 
 metadata-check:
-	$(UV) run python tools/check_project_metadata.py
+	$(UV) run python tools/check_project_metadata_v2.py
 
 lint:
 	$(UV) run ruff check src tests examples tools
