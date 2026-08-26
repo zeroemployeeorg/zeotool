@@ -51,14 +51,27 @@ def test_refuses_missing_source_without_writing(tmp_path: Path) -> None:
 
 
 def test_refuses_source_outside_work_directory(tmp_path: Path) -> None:
-    """The workspace boundary prevents a context from reading arbitrary paths."""
-    outside = tmp_path.parent / "outside.txt"
-    outside.write_text("not in this lab", encoding="utf-8")
+    """Outside-source denial leaves source bytes and the output tree unchanged."""
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.txt"
+    outside.write_bytes(b"not in this lab\x00")
+    outside_before = outside.read_bytes()
+    outside_lstat_before = outside.lstat()
+    tool_context = context(tmp_path)
+    output = Path(tool_context.output_dir)
+    output_before = tuple(output.iterdir())
 
-    result = AssetCopyTool().run(AssetCopyRequest(source=outside), context(tmp_path))
+    result = AssetCopyTool().run(AssetCopyRequest(source=outside), tool_context)
 
     assert result.status == "skipped"
     assert result.machine_message == "ZEO_WORKSPACE_ESCAPE"
+    assert outside.is_file()
+    assert not outside.is_symlink()
+    assert outside.read_bytes() == outside_before
+    assert outside.lstat().st_ino == outside_lstat_before.st_ino
+    assert outside.lstat().st_size == outside_lstat_before.st_size
+    assert outside.lstat().st_mtime_ns == outside_lstat_before.st_mtime_ns
+    assert tuple(output.iterdir()) == output_before
+    assert not (output / outside.name).exists()
 
 
 def test_refuses_output_directory_outside_work_directory(tmp_path: Path) -> None:
@@ -81,20 +94,34 @@ def test_refuses_output_directory_outside_work_directory(tmp_path: Path) -> None
 def test_refuses_source_symlink_that_resolves_outside_work_directory(
     tmp_path: Path,
 ) -> None:
-    """A source symlink may not make the tool read an external target."""
+    """A denied source symlink preserves link, external bytes, and empty output."""
     secret = tmp_path.parent / f"{tmp_path.name}-secret.txt"
-    secret.write_text("private bytes", encoding="utf-8")
+    secret.write_bytes(b"private bytes\x00")
+    secret_before = secret.read_bytes()
+    secret_lstat_before = secret.lstat()
     linked_source = tmp_path / "linked-secret.txt"
     linked_source.symlink_to(secret)
+    link_target_before = linked_source.readlink()
+    link_lstat_before = linked_source.lstat()
+    tool_context = context(tmp_path)
+    output = Path(tool_context.output_dir)
+    output_before = tuple(output.iterdir())
 
-    result = AssetCopyTool().run(
-        AssetCopyRequest(source=linked_source), context(tmp_path)
-    )
+    result = AssetCopyTool().run(AssetCopyRequest(source=linked_source), tool_context)
 
     assert result.status == "skipped"
     assert result.machine_message == "ZEO_WORKSPACE_ESCAPE"
-    assert secret.read_text(encoding="utf-8") == "private bytes"
-    assert not (tmp_path / "output" / "linked-secret.txt").exists()
+    assert linked_source.is_symlink()
+    assert linked_source.readlink() == link_target_before
+    assert linked_source.lstat().st_ino == link_lstat_before.st_ino
+    assert linked_source.lstat().st_mtime_ns == link_lstat_before.st_mtime_ns
+    assert secret.is_file()
+    assert secret.read_bytes() == secret_before
+    assert secret.lstat().st_ino == secret_lstat_before.st_ino
+    assert secret.lstat().st_size == secret_lstat_before.st_size
+    assert secret.lstat().st_mtime_ns == secret_lstat_before.st_mtime_ns
+    assert tuple(output.iterdir()) == output_before
+    assert not (output / "linked-secret.txt").exists()
 
 
 def test_refuses_destination_symlink_that_escapes_work_directory(
