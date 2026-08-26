@@ -1,221 +1,87 @@
-# QuackTool 🦆
+# ZeoTool
 
-A QuackVerse tool for automation, built on top of QuackCore.
+ZeoTool is a small, production-quality teaching tool for one concrete idea:
+turn a typed local input into an observable local asset. It copies one existing
+file into a chosen output directory through ZeoCore's public tool and
+filesystem contracts. It makes no network calls and needs no credentials.
 
-## 🌟 Features
+## What students learn
 
-- Process media assets (images, videos, audio, documents)
-- Support for multiple processing modes (optimize, transform, analyze, generate)
-- Command-line interface for easy use
-- Python API for integration into other applications
-- Plugin interface for extending functionality
+1. Model user input with Pydantic.
+2. Implement `BaseZeoTool.run(request, context)` against immutable
+   `ToolContext`.
+3. Return structured `CapabilityResult` values for success and expected
+   non-success outcomes.
+4. Use the runner-provided `FileSystemService`, rather than ad-hoc file I/O,
+   for the actual side effect.
+5. Test the behavior with a real context and temporary directories.
 
-## 🚀 Getting Started
+The current exercise is deliberately narrow. It is a reliable foundation for
+future asset transforms; it does not claim to resize, transcode, analyse, or
+generate media.
 
-### Prerequisites
+## Run it
 
-- Python 3.13 or higher
-- QuackCore library
-
-### Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/quacktool.git
-cd quacktool
-
-# Install the package using a modern package manager like uv
-uv venv --python 3.13
-source .venv/bin/activate
-uv pip install -e .
-
-# Or use the provided setup script
-make setup
-source setup.sh
-```
-
-### Using the CLI
-
-The QuackTool CLI provides commands for processing assets:
+ZeoTool requires Python 3.13+ and uses the exact runtime dependency
+`zeocore==0.5.0` (the resolved transitive graph is committed in `uv.lock`).
 
 ```bash
-# Process a single file
-quacktool process image.jpg --output processed.webp --quality 85
-
-# Process multiple files in batch mode
-quacktool batch image1.jpg image2.png --output-dir ./processed --format webp
+uv sync --locked --all-extras
+uv run python -m zeotool examples/input.txt --output-dir examples/output \\
+  --work-dir .
+cat examples/output/input.txt
 ```
 
-### Using the Python API
+The command prints the destination path. Source and output must stay inside
+`--work-dir` (the current directory by default), so the runner never grants
+the tool unrestricted filesystem access. It fails safely when the source is
+missing or the destination already exists. Use `--overwrite` only when a
+replacement is intentional.
+
+For a completely temporary demonstration:
+
+```bash
+uv run python examples/local_copy.py
+```
+
+Remove local sample output with `rm -rf examples/output`; no reset command
+touches source files or Git history.
+
+## Verify
+
+```bash
+make verify
+```
+
+The gate performs a locked install, formatting check, lint, strict type check,
+tests, and dependency consistency audit. It is secret-free and suitable for
+pull-request CI.
+
+## Migration boundary
+
+ZeoTool is a clean API break from the former package and distribution name.
+There is no compatibility package, command, import alias, or plugin shim for
+the prior API. Update callers to import `zeotool` and run `python -m zeotool`.
+Historical commits remain intact; [`RELICENSING.md`](RELICENSING.md) records
+the authorized forward MIT relicensing.
+
+The repository URL remains its historical GitHub address until the repository
+owner performs the separate GitHub rename. The distribution and all source
+surfaces in this revision use ZeoTool.
+
+## API shape
 
 ```python
-from pathlib import Path
-from quacktool import process_asset
-from quacktool.models import AssetConfig, ProcessingOptions, ProcessingMode
+from zeotool import AssetCopyRequest, AssetCopyTool
 
-# Configure the asset processing
-config = AssetConfig(
-    input_path=Path("image.jpg"),
-    output_path=Path("processed.webp"),
-    options=ProcessingOptions(
-        mode=ProcessingMode.OPTIMIZE,
-        quality=85,
-        format="webp",
-    ),
-)
-
-# Process the asset
-result = process_asset(config)
-
-if result.success:
-    print(f"Processing successful: {result.output_path}")
-    print(f"Metrics: {result.metrics}")
-else:
-    print(f"Processing failed: {result.error}")
+# A runner supplies a real ZeoCore ToolContext with a FileSystemService.
+result = AssetCopyTool().run(AssetCopyRequest(source="lesson.txt"), context)
 ```
 
-## 🧩 Integration with QuackCore
+On success, `result.data` contains the copied destination and byte count. On
+an expected input or copy issue, the tool returns a structured skipped result
+with a `ZEO_*` machine code for a runner to inspect.
 
-QuackTool integrates with QuackCore through the plugin system:
+## License
 
-```python
-from quackcore.plugins import registry
-
-# Get the QuackTool plugin
-quacktool_plugin = registry.get_plugin("QuackTool")
-
-# Process a file using the plugin
-result = quacktool_plugin.process_file(
-    file_path="image.jpg",
-    output_path="processed.webp",
-    options={
-        "quality": 85,
-        "format": "webp",
-        "mode": "optimize",
-    },
-)
-
-if result.success:
-    print(f"Processing successful: {result.content}")
-else:
-    print(f"Processing failed: {result.error}")
-
-## 🔧 Development
-
-### Development Setup
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/quacktool.git
-cd quacktool
-
-# Set up development environment
-make setup
-source setup.sh
-
-# Run tests
-make test
-
-# Format code
-make format
-
-# Lint code
-make lint
-```
-
-### Project Structure
-
-The project follows a standard Python package structure:
-
-```
-quacktool/
-├── examples/               # Usage examples
-├── src/
-│   └── quacktool/          # Main package
-│       ├── __init__.py     # Package initialization
-│       ├── cli.py          # Command-line interface
-│       ├── config.py       # Configuration management
-│       ├── core.py         # Core functionality
-│       ├── models.py       # Data models
-│       ├── plugin.py       # QuackCore plugin interface
-│       └── version.py      # Version information
-├── tests/                  # Test suite
-├── .gitignore              # Git ignore file
-├── Makefile                # Makefile for common tasks
-├── pyproject.toml          # Project metadata and dependencies
-└── README.md               # Project documentation
-```
-
-### Adding New Features
-
-1. Implement the feature in the appropriate module
-2. Add tests to verify the functionality
-3. Update documentation with the new feature
-4. Run the test suite to ensure everything works
-
-## 📚 Configuration
-
-QuackTool uses QuackCore's configuration system. The default configuration is:
-
-```yaml
-custom:
-  quacktool:
-    default_quality: 80
-    default_format: "webp"
-    temp_dir: "./temp"
-    output_dir: "./output"
-    log_level: "INFO"
-```
-
-You can override this configuration by creating a `quack_config.yaml` file in your project directory or by setting environment variables:
-
-```bash
-export QUACK_QUACKTOOL__DEFAULT_QUALITY=90
-export QUACK_QUACKTOOL__OUTPUT_DIR="/custom/output/path"
-```
-
-## 📋 Command Reference
-
-### `quacktool process`
-
-Process a single file with custom options.
-
-```bash
-quacktool process INPUT_FILE [OPTIONS]
-```
-
-Options:
-- `--output`, `-o`: Output path
-- `--mode`, `-m`: Processing mode (optimize, transform, analyze, generate)
-- `--quality`, `-q`: Quality level (1-100)
-- `--format`, `-f`: Output format
-- `--width`: Output width
-- `--height`: Output height
-- `--type`: Asset type (image, video, audio, document)
-
-### `quacktool batch`
-
-Process multiple files with the same settings.
-
-```bash
-quacktool batch [INPUT_FILES...] [OPTIONS]
-```
-
-Options:
-- `--output-dir`, `-o`: Output directory (required)
-- `--mode`, `-m`: Processing mode (optimize, transform, analyze, generate)
-- `--quality`, `-q`: Quality level (1-100)
-- `--format`, `-f`: Output format
-
-## 🔌 Extending QuackTool
-
-You can extend QuackTool by implementing your own processing functions in `core.py` or by creating new commands in `cli.py`.
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🙏 Acknowledgements
-
-- QuackCore for providing the foundation infrastructure
-- The QuackVerse ecosystem for inspiration and integration
+MIT. See [`LICENSE`](LICENSE) and the forward relicensing record.

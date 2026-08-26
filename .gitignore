@@ -192,5 +192,5 @@ token.json
 docs/_build/
 site/
 
-# QuackTool specific output
+# ZeoTool specific output
 *.processed.*
