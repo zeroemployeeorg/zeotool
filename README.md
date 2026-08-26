@@ -34,9 +34,14 @@ cat examples/output/input.txt
 
 The command prints the destination path. Source and output must stay inside
 `--work-dir` (the current directory by default), so the runner never grants
-the tool unrestricted filesystem access. It fails safely when the source is
-missing or the destination already exists. Use `--overwrite` only when a
-replacement is intentional.
+the tool unrestricted filesystem access. Traversal-style output names and
+symlinks that resolve outside this boundary are refused before a file is read
+or written. It also fails safely when the destination already exists.
+
+Use `--overwrite` only when replacing a normal destination inside the output
+directory is intentional. It replaces that destination with byte-identical
+source content; it never permits an output symlink to redirect the write
+outside the workspace.
 
 For a completely temporary demonstration:
 

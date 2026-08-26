@@ -6,6 +6,7 @@ import argparse
 import logging
 from pathlib import Path
 
+from pydantic import ValidationError
 from zeo_core.core.fs import create_service
 from zeo_core.tools import ToolContext
 
@@ -55,12 +56,13 @@ def main() -> None:
         work_dir=str(work_dir),
         output_dir=str(output_dir),
     )
-    result = AssetCopyTool().run(
-        AssetCopyRequest(
+    try:
+        request = AssetCopyRequest(
             source=args.source, output_name=args.name, overwrite=args.overwrite
-        ),
-        context,
-    )
+        )
+    except ValidationError as error:
+        raise SystemExit(f"zeotool: {error}") from error
+    result = AssetCopyTool().run(request, context)
     if result.data is None:
         raise SystemExit(f"zeotool: {result.human_message}")
     print(result.data.destination)

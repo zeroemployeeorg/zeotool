@@ -32,3 +32,34 @@ def test_module_cli_copies_a_local_file(tmp_path: Path) -> None:
     destination = Path(completed.stdout.strip())
     assert destination == output / "input.txt"
     assert destination.read_text(encoding="utf-8") == "hello learner\n"
+
+
+def test_module_cli_rejects_a_traversal_output_name(tmp_path: Path) -> None:
+    """The CLI rejects traversal before calling the real filesystem service."""
+    source = tmp_path / "input.txt"
+    source.write_text("hello learner\n", encoding="utf-8")
+    output = tmp_path / "output"
+    outside = tmp_path.parent / f"{tmp_path.name}-escaped.txt"
+
+    completed = subprocess.run(  # noqa: S603 -- fixed interpreter and test-controlled arguments
+        [
+            sys.executable,
+            "-m",
+            "zeotool",
+            str(source),
+            "--output-dir",
+            str(output),
+            "--work-dir",
+            str(tmp_path),
+            "--name",
+            "../escaped.txt",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode != 0
+    assert "output_name" in completed.stderr
+    assert not outside.exists()
+    assert not (output / "escaped.txt").exists()
