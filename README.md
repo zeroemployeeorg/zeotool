@@ -1,9 +1,24 @@
 # ZeoTool
 
-ZeoTool is a small, production-quality teaching tool for one concrete idea:
-turn a typed local input into an observable local asset. It copies one existing
-file into a chosen output directory through ZeoCore's public tool and
-filesystem contracts. It makes no network calls and needs no credentials.
+ZeoTool is an MIT-licensed, security-conscious educational reference
+capability for one concrete idea: turn a typed local input into an observable
+local asset. It demonstrates deterministic local capability implementation
+using ZeoCore's public tool and filesystem contracts. It copies one existing
+file into a chosen output directory, makes no network calls, and needs no
+credentials.
+
+## Educational boundary
+
+ZeoTool is a readable teaching example, not an execution or orchestration
+framework. It holds no organizational authority and does not schedule,
+supervise, coordinate, or persist actors. It is not part of the Zero Employee
+Go production runtime, and Zero Employee Go does not import or depend on its
+Python runtime.
+
+If a future Zero Employee integration is needed, it must use a versioned,
+transport-neutral capability manifest, request, and receipt boundary owned by
+Zero Employee. Production capabilities belong in an explicitly governed
+capability package; this repository stays a narrow educational reference.
 
 ## What students learn
 
