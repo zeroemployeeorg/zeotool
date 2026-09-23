@@ -1,0 +1,183 @@
+"""Behavioral tests for the real ZeoCore-native tool."""
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+
+from zeo_core.core.fs import create_service
+from zeo_core.tools import ToolContext
+
+from zeotool import AssetCopyRequest, AssetCopyTool
+
+
+def context(tmp_path: Path, output: Path | None = None) -> ToolContext:
+    """Build a genuine, isolated ZeoCore context for a test."""
+    output_path = output or tmp_path / "output"
+    output_path.mkdir(exist_ok=True)
+    return ToolContext(
+        run_id="test-copy",
+        tool_name="asset_copy",
+        tool_version="0.2.0",
+        logger=logging.getLogger("zeotool.tests"),
+        fs=create_service(base_dir=tmp_path),
+        work_dir=str(tmp_path),
+        output_dir=str(output_path),
+    )
+
+
+def test_copies_bytes_and_reports_destination(tmp_path: Path) -> None:
+    """The visible output is byte-identical and its path is reported."""
+    source = tmp_path / "source.bin"
+    source.write_bytes(b"student-visible asset\x00")
+
+    result = AssetCopyTool().run(AssetCopyRequest(source=source), context(tmp_path))
+
+    assert result.status == "success"
+    assert result.data is not None
+    assert result.data.destination.read_bytes() == b"student-visible asset\x00"
+    assert result.data.bytes_written == len(b"student-visible asset\x00")
+
+
+def test_refuses_missing_source_without_writing(tmp_path: Path) -> None:
+    """A missing input is a structured skip, not a fabricated test fixture."""
+    result = AssetCopyTool().run(
+        AssetCopyRequest(source=tmp_path / "missing.txt"), context(tmp_path)
+    )
+
+    assert result.status == "skipped"
+    assert result.machine_message == "ZEO_INPUT_MISSING"
+    assert not (tmp_path / "output" / "missing.txt").exists()
+
+
+def test_refuses_source_outside_work_directory(tmp_path: Path) -> None:
+    """Outside-source denial leaves source bytes and the output tree unchanged."""
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.txt"
+    outside.write_bytes(b"not in this lab\x00")
+    outside_before = outside.read_bytes()
+    outside_lstat_before = outside.lstat()
+    tool_context = context(tmp_path)
+    output = Path(tool_context.output_dir)
+    output_before = tuple(output.iterdir())
+
+    result = AssetCopyTool().run(AssetCopyRequest(source=outside), tool_context)
+
+    assert result.status == "skipped"
+    assert result.machine_message == "ZEO_WORKSPACE_ESCAPE"
+    assert outside.is_file()
+    assert not outside.is_symlink()
+    assert outside.read_bytes() == outside_before
+    assert outside.lstat().st_ino == outside_lstat_before.st_ino
+    assert outside.lstat().st_size == outside_lstat_before.st_size
+    assert outside.lstat().st_mtime_ns == outside_lstat_before.st_mtime_ns
+    assert tuple(output.iterdir()) == output_before
+    assert not (output / outside.name).exists()
+
+
+def test_refuses_output_directory_outside_work_directory(tmp_path: Path) -> None:
+    """An outside output directory cannot receive a copied source file."""
+    source = tmp_path / "lesson.txt"
+    source.write_text("inside", encoding="utf-8")
+    outside_output = tmp_path.parent / f"{tmp_path.name}-outside-output"
+    outside_output.mkdir()
+
+    result = AssetCopyTool().run(
+        AssetCopyRequest(source=source), context(tmp_path, outside_output)
+    )
+
+    assert result.status == "skipped"
+    assert result.machine_message == "ZEO_WORKSPACE_ESCAPE"
+    assert not (outside_output / "lesson.txt").exists()
+    assert source.read_text(encoding="utf-8") == "inside"
+
+
+def test_refuses_source_symlink_that_resolves_outside_work_directory(
+    tmp_path: Path,
+) -> None:
+    """A denied source symlink preserves link, external bytes, and empty output."""
+    secret = tmp_path.parent / f"{tmp_path.name}-secret.txt"
+    secret.write_bytes(b"private bytes\x00")
+    secret_before = secret.read_bytes()
+    secret_lstat_before = secret.lstat()
+    linked_source = tmp_path / "linked-secret.txt"
+    linked_source.symlink_to(secret)
+    link_target_before = linked_source.readlink()
+    link_lstat_before = linked_source.lstat()
+    tool_context = context(tmp_path)
+    output = Path(tool_context.output_dir)
+    output_before = tuple(output.iterdir())
+
+    result = AssetCopyTool().run(AssetCopyRequest(source=linked_source), tool_context)
+
+    assert result.status == "skipped"
+    assert result.machine_message == "ZEO_WORKSPACE_ESCAPE"
+    assert linked_source.is_symlink()
+    assert linked_source.readlink() == link_target_before
+    assert linked_source.lstat().st_ino == link_lstat_before.st_ino
+    assert linked_source.lstat().st_mtime_ns == link_lstat_before.st_mtime_ns
+    assert secret.is_file()
+    assert secret.read_bytes() == secret_before
+    assert secret.lstat().st_ino == secret_lstat_before.st_ino
+    assert secret.lstat().st_size == secret_lstat_before.st_size
+    assert secret.lstat().st_mtime_ns == secret_lstat_before.st_mtime_ns
+    assert tuple(output.iterdir()) == output_before
+    assert not (output / "linked-secret.txt").exists()
+
+
+def test_refuses_destination_symlink_that_escapes_work_directory(
+    tmp_path: Path,
+) -> None:
+    """An output symlink cannot turn an allowed copy into an external write."""
+    source = tmp_path / "lesson.txt"
+    source.write_text("replacement", encoding="utf-8")
+    output = tmp_path / "output"
+    output.mkdir()
+    protected = tmp_path.parent / f"{tmp_path.name}-protected.txt"
+    protected.write_text("do not change", encoding="utf-8")
+    (output / "lesson.txt").symlink_to(protected)
+
+    result = AssetCopyTool().run(
+        AssetCopyRequest(source=source, overwrite=True), context(tmp_path)
+    )
+
+    assert result.status == "skipped"
+    assert result.machine_message == "ZEO_OUTPUT_ESCAPE"
+    assert protected.read_text(encoding="utf-8") == "do not change"
+    assert (output / "lesson.txt").is_symlink()
+
+
+def test_refuses_existing_destination_without_overwrite(tmp_path: Path) -> None:
+    """Copy uses the public FileSystemService overwrite boundary."""
+    source = tmp_path / "lesson.txt"
+    source.write_text("new", encoding="utf-8")
+    output = tmp_path / "output"
+    output.mkdir()
+    (output / "lesson.txt").write_text("old", encoding="utf-8")
+
+    result = AssetCopyTool().run(AssetCopyRequest(source=source), context(tmp_path))
+
+    assert result.status == "skipped"
+    assert result.machine_message == "ZEO_COPY_FAILED"
+    assert (output / "lesson.txt").read_text(encoding="utf-8") == "old"
+
+
+def test_overwrite_replaces_existing_destination_with_source_bytes(
+    tmp_path: Path,
+) -> None:
+    """The explicit overwrite flag permits one contained, observable replacement."""
+    source = tmp_path / "lesson.txt"
+    source.write_bytes(b"new lesson bytes\x00")
+    output = tmp_path / "output"
+    output.mkdir()
+    destination = output / "lesson.txt"
+    destination.write_bytes(b"old lesson bytes")
+
+    result = AssetCopyTool().run(
+        AssetCopyRequest(source=source, overwrite=True), context(tmp_path)
+    )
+
+    assert result.status == "success"
+    assert result.data is not None
+    assert result.data.destination == destination
+    assert result.data.bytes_written == len(b"new lesson bytes\x00")
+    assert destination.read_bytes() == b"new lesson bytes\x00"
